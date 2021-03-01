@@ -114,3 +114,5 @@ ENV/
 .vscode
 outputs
 multirun
+*.html
+data_exploration.ipynb
