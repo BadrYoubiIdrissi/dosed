@@ -34,20 +34,32 @@ def train(cfg):
 
     fs = 100
     signals = ['abdom_belt','airflow','PPG','thorac_belt','snore','SPO2','C4-A1','O2-A1']
-    ranges = [(-1000.0, 1000.0), (-400.0, 400.0), (-4000.0, 4000.0), (-1000.0, 1000.0), (-1000.0, 1000.0), (0.0, 100000.0), (-1500.0, 1500.0), (-1500.0, 1500.0)]
+    # ranges = [((-1145.483551138935, 4399.0), (-400.0, 400.0), (-4000.0, 4000.0), (-1000.0, 1000.0), (-1000.0, 1000.0), (0.0, 100000.0), (-1500.0, 1500.0), (-1500.0, 1500.0)]
+    quantiles = [(0.0001, 0.9999), (0.0001, 0.9999), (0.0001, 0.9999), (0.0001, 0.9999), (0.0001, 0.9999), (0.0001, 0.9999), (0.0001, 0.9999), (0.0001, 0.9999)]
+
+    # signals = [
+    #     {
+    #         'h5_path': signal,
+    #         'fs': fs,
+    #         'processing': {
+    #             "type": "max_min_normalize",
+    #             "args": {}
+    #         }
+    #     } for signal in signals
+    # ]
 
     signals = [
         {
             'h5_path': signal,
             'fs': fs,
             'processing': {
-                "type": "clip_and_normalize",
+                "type": "quantile_normalize",
                 "args": {
-                    "min_value": min_value,
-                    "max_value": max_value,
+                    "min_quantile": min_quantile,
+                    "max_quantile": max_quantile
                 }
             }
-        } for signal, (min_value, max_value) in zip(signals, ranges)
+        } for signal, (min_quantile, max_quantile) in zip(signals, quantiles)
     ]
 
     events = [
@@ -80,8 +92,8 @@ def train(cfg):
     dataset_parameters_train.update(dataset_parameters)
     dataset_train = dataset(records=train, **dataset_parameters_train)
 
-    default_event_sizes = [0.7, 1, 1.3]
-    k_max = 5
+    default_event_sizes = [17]
+    k_max = 7
     kernel_size = 5
     probability_dropout = 0.1
     device = torch.device("cuda")
@@ -104,14 +116,14 @@ def train(cfg):
         "input_shape": dataset_train.input_shape,
         "number_of_classes": dataset_train.number_of_classes,
     }
+    
     net = model(**net_parameters)
     net = net.to(device)
     print("Used model : ")
-    print(summary(net))
-
+    print(summary(net, (8,9000)))
     optimizer_parameters = {
-        "lr": 5e-3,
-        "weight_decay": 1e-8,
+        "lr": 0.01,
+        "weight_decay": 1e-3,
     }
     loss_specs = {
         "type": "focal",
@@ -121,7 +133,7 @@ def train(cfg):
         }
     }
     epochs = 20
-
+    save_folder = '.'
     trainer = trainers["adam"](
         net,
         optimizer_parameters=optimizer_parameters,
@@ -135,13 +147,19 @@ def train(cfg):
                 "name_events": ["apnea"]
             },
         matching_overlap=0.3,
-        save_folder="./"
+        on_epoch_end_callbacks = [lambda epoch: net.save(save_folder + str(epoch) + "_net", net_parameters)]
     )
-    import pdb; pdb.set_trace()
     best_net_train, best_metrics_train, best_threshold_train = trainer.train(
         dataset_train,
         dataset_validation,
+        batch_size=2048
     )
+    
+    # trainer.train(
+    #     dataset_train,
+    #     dataset_validation,
+    #     batch_size=2048
+    # )
     print("Best train metrics", best_metrics_train)
     print("Best threshold train", best_threshold_train)
     torch.save(best_net_train.state_dict(), "best_net.pt")

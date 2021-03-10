@@ -44,6 +44,7 @@ class TrainerBaseAdam(TrainerBase):
                 "zoom_in": False,
             },
             matching_overlap=0.5,
+            on_epoch_end_callbacks=[]
     ):
         super(TrainerBaseAdam, self).__init__(
             net=net,
@@ -57,5 +58,6 @@ class TrainerBaseAdam(TrainerBase):
             logger_parameters=logger_parameters,
             threshold_space=threshold_space,
             matching_overlap=matching_overlap,
+            on_epoch_end_callbacks=on_epoch_end_callbacks
         )
         self.optimizer = optim.Adam(net.parameters(), **optimizer_parameters)

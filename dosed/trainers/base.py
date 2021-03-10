@@ -51,6 +51,7 @@ class TrainerBase:
                 "zoom_in": False,
             },
             matching_overlap=0.5,
+            on_epoch_end_callbacks=[]
     ):
 
         self.net = net
@@ -70,21 +71,22 @@ class TrainerBase:
         self.save_folder = save_folder
         self.matching_overlap = matching_overlap
         self.matching = match_events_localization_to_default_localizations
+        self.on_epoch_end_callbacks = on_epoch_end_callbacks
         if logger_parameters is not None:
             self.train_logger = Logger(**logger_parameters)
 
     def on_batch_start(self):
         pass
 
-    def on_epoch_end(self):
-        pass
+    def on_epoch_end(self, epoch):
+        for callback in self.on_epoch_end_callbacks:
+            callback(epoch)
 
     def validate(self, validation_dataset, threshold_space):
         """
         Compute metrics on validation_dataset net for test_dataset and
         select best classification threshold
         """
-
         best_thresh = -1
         best_metrics_epoch = {
             metric: -1
@@ -279,9 +281,6 @@ class TrainerBase:
                     metrics_epoch = zoom_metrics_epoch
                     threshold = zoom_threshold
 
-            if self.save_folder:
-                self.net.save(self.save_folder + str(epoch) + "_net")
-
             if metrics_epoch[self.metric_to_maximize] > best_value:
                 best_value = metrics_epoch[self.metric_to_maximize]
                 best_threshold = threshold
@@ -298,7 +297,7 @@ class TrainerBase:
             if counter_patience > self.patience:
                 break
 
-            self.on_epoch_end()
+            self.on_epoch_end(epoch)
             if "train_logger" in vars(self):
                 self.train_logger.add_new_loss(
                     epoch_loss_localization_train.item(),
