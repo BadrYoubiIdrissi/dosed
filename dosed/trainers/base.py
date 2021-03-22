@@ -12,7 +12,8 @@ from ..datasets import collate
 from ..functions import (loss_functions, available_score_functions, compute_metrics_dataset)
 from ..utils import (match_events_localization_to_default_localizations, Logger)
 
-
+from torch.autograd import grad
+import wandb
 class TrainerBase:
     """Trainer class basic """
 
@@ -51,7 +52,11 @@ class TrainerBase:
                 "zoom_in": False,
             },
             matching_overlap=0.5,
-            on_epoch_end_callbacks=[]
+            on_epoch_end_callbacks=[],
+            loss_pos_weight=1.0,
+            loss_neg_weight=1.0,
+            loss_loc_weight=1.0,
+            lr_scheduler=None
     ):
 
         self.net = net
@@ -72,6 +77,13 @@ class TrainerBase:
         self.matching_overlap = matching_overlap
         self.matching = match_events_localization_to_default_localizations
         self.on_epoch_end_callbacks = on_epoch_end_callbacks
+        self.loss_pos_weight=loss_pos_weight
+        self.loss_neg_weight=loss_neg_weight
+        self.loss_loc_weight=loss_loc_weight
+        if lr_scheduler:
+            self.lr_scheduler = torch.optim.lr_scheduler.CyclicLR(self.optimizer, **lr_scheduler)
+        else:
+            self.lr_scheduler = None
         if logger_parameters is not None:
             self.train_logger = Logger(**logger_parameters)
 
@@ -148,9 +160,20 @@ class TrainerBase:
         # Get signals and labels
         signals, events = data
         x = signals.to(self.net.device)
+        x.requires_grad = True
 
         # Forward
         localizations, classifications, localizations_default = self.net.forward(x)
+
+        wandb.log({"localiz_center": localizations[:,:,0].detach().cpu()}, commit=False)
+        wandb.log({"localiz_dur": localizations[:,:,1].detach().cpu()}, commit=False)
+        wandb.log({"classifications_pos": classifications[:,:,1].detach().cpu()}, commit=False)
+        wandb.log({"classifications_neg": classifications[:,:,0].detach().cpu()}, commit=False)
+
+        pos_mask = classifications.argmax(dim=-1)>0
+        wandb.log({"localiz_center_pos": localizations[pos_mask][:,0].detach().cpu()}, commit=False)
+        wandb.log({"localiz_dur_pos": localizations[pos_mask][:,1].detach().cpu()}, commit=False)
+
 
         # Matching
         localizations_target, classifications_target = self.matching(
@@ -168,6 +191,12 @@ class TrainerBase:
                                 classifications,
                                 localizations_target,
                                 classifications_target))
+
+        # import pdb; pdb.set_trace()
+        # probe = lambda y, x: grad(y, x, retain_graph=True)[0].abs().mean().item()
+        wandb.log({"input_sensitivity_loc": grad(loss_localization, x, retain_graph=True)[0].view(x.size(0), -1).norm(dim=-1).mean().item()}, commit=False)
+        wandb.log({"input_sensitivity_neg": grad(loss_classification_negative, x, retain_graph=True)[0].view(x.size(0), -1).norm(dim=-1).mean().item()}, commit=False)
+        wandb.log({"input_sensitivity_pos": grad(loss_classification_positive, x, retain_graph=True)[0].view(x.size(0), -1).norm(dim=-1).mean().item()}, commit=False)
 
         return loss_classification_positive, \
             loss_classification_negative, \
@@ -214,7 +243,7 @@ class TrainerBase:
             epoch_loss_localization_val = 0.0
 
             for i, data in enumerate(dataloader_train, 0):
-
+                # import pdb; pdb.set_trace()
                 # On batch start
                 self.on_batch_start()
 
@@ -233,14 +262,16 @@ class TrainerBase:
                     loss_classification_negative
                 epoch_loss_localization_train += loss_localization
 
-                loss = loss_classification_positive \
-                    + loss_classification_negative \
-                    + loss_localization
+                loss = self.loss_pos_weight*loss_classification_positive \
+                    + self.loss_neg_weight*loss_classification_negative \
+                    + self.loss_loc_weight*loss_localization
                 loss.backward()
 
                 # gradient descent
                 self.optimizer.step()
-
+                if self.lr_scheduler:
+                    self.lr_scheduler.step()
+            
             epoch_loss_classification_positive_train /= (i + 1)
             epoch_loss_classification_negative_train /= (i + 1)
             epoch_loss_localization_train /= (i + 1)

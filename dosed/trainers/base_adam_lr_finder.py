@@ -38,11 +38,11 @@ class LRFinderBaseAdam(TrainerBaseAdam):
         }
         dataloader_train = DataLoader(train_dataset, **dataloader_parameters)
         losses = []
-        lr_space = np.logspace(-3, 1, 500)
+        lr_space = np.logspace(-6, -1, 200)
         t = tqdm.tqdm(lr_space)
         for lr, data in zip(t, cycle(dataloader_train)):
             t.set_postfix(current_lr=lr)
-            self.optimizer_parameters.update({"lr": lr})
+            self.optimizer_parameters.update({"lr": float(lr)})
             self.optimizer = optim.SGD(self.net.parameters(), **self.optimizer_parameters)
             # Set network to train mode
             self.net.train()
@@ -64,3 +64,4 @@ class LRFinderBaseAdam(TrainerBaseAdam):
         fig.update_layout(title="Learning rate finder", xaxis_title="learning rate", yaxis_title="loss")
         fig.update_xaxes(type="log")
         fig.write_html("lr_finder.html")
+        return None, None, None

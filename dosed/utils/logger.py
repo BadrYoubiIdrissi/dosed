@@ -12,6 +12,7 @@ import time
 import os.path as osp
 from .colorize import colorize
 import tempfile
+import wandb
 
 
 class Logger:
@@ -63,6 +64,7 @@ class Logger:
         self.history_loc_loss[mode].append(loc_loss)
         self.history_class_pos_loss[mode].append(class_pos_loss)
         self.history_class_neg_loss[mode].append(class_neg_loss)
+        wandb.log({f"losses/{mode}_loc_loss": loc_loss, f"losses/{mode}_class_pos_loss": class_pos_loss, f"losses/{mode}_class_neg_loss": class_neg_loss}, commit=False)
 
     def add_new_metrics(self, metrics):
         """
@@ -76,12 +78,24 @@ class Logger:
                     (metrics[0][num_event][metric], metrics[1])
                 )
 
+    def log_metrics(self):
+        best_metrics = {}
+        for metric, metric_list in self.current_epoch_metrics["apnea"].items():
+            if len(metric_list) >0:
+                best_metric_value, best_metric_threshold = max(metric_list, key=lambda e: e[0])
+            else:
+                best_metric_value, best_metric_threshold = None, None
+            best_metrics[f"metrics/best_{metric}"] = best_metric_value
+            best_metrics[f"thresh/best_{metric}_thresh"] = best_metric_threshold
+        wandb.log(best_metrics)
+
     def add_current_metrics_to_history(self):
         """
         Adds current_epoch_metrics to history and resets the variable.
         Call at the end of each epoch
         """
         self.history_metrics.append(self.current_epoch_metrics)
+        self.log_metrics()
         self.history_time.append(time.time())
         self.current_epoch_metrics = {
             name_event: {metric: [] for metric in self.metrics}

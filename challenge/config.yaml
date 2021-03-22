@@ -1,3 +1,93 @@
+job:
+  seed: 2019
+  device: 0
+data:
+  h5_directory: '/gpfs/users/idrissib/datasets/sleepapnea/records/train'  # adapt if you used a different DOWNLOAD_PATH when running `make download_example`
+  percent_validation: 20
+  window_size: 90  # window duration in seconds
+  ratio_positive: 0.2  # When creating the batch, sample containing at least one spindle will be drawn with that probability
+  frequence_sample: 100
+  signals:
+    # - abdom_belt
+    # - airflow
+    # - PPG 
+    # - thorac_belt
+    # - snore
+    - SPO2
+    # - C4-A1
+    # - O2-A1
+  events:
+    - apnea
+
+  quantiles: 
+    min: 0.001
+    max: 0.999
+  transformations: {}
+    # gaussian: 
+    #   _target_: dosed.preprocessing.GaussianNoise
+    # rescaled_normal:
+    #   _target_: dosed.preprocessing.RescaleNormal
+    # invert:
+    #   _target_: dosed.preprocessing.Invert
+
+  n_jobs: 16
+  cache: True
+
+# model:
+#   init_params:
+#     detection_parameters:
+#       overlap_non_maximum_suppression: 0.1
+#       classification_threshold: 0.5
+#     k_max: 8
+#     kernel_size: 9
+#     pdrop: 0
+#     fs: ${data.frequence_sample}
+#   default_event_sizes:
+#     - 10
+model:
+  init_params:
+    detection_parameters:
+      overlap_non_maximum_suppression: 0.5
+      classification_threshold: 0.5
+    k_max: 3
+    kernel_size: 9
+    pdrop: 0.0
+    fs: ${data.frequence_sample}
+  default_event_sizes:
+    - 10
+  
+    
+optimizer_parameters:
+  lr: 1e-5
+
+lr_scheduler:
+  base_lr: 1e-6
+  max_lr: 1e-4
+  step_size_up: 5
+
+loss:
+  type: focal
+
+trainer:
+  type: adam
+  epochs: 20
+  save_folder: .
+  matching_overlap: 0.3
+  batch_size: 128
+  loss_pos_weight: 1
+  loss_neg_weight: 1
+  loss_loc_weight: 1
+
+logger:
+  num_events: 1
+  output_dir: .
+  output_fname: train_history.json
+  metrics: 
+    - precision
+    - recall
+    - f1
+  name_events: ${data.events}
+
 hydra:
   launcher:
     timeout_min: 360
@@ -11,3 +101,6 @@ hydra:
 
 defaults:
   - override hydra/launcher: submitit_slurm
+
+wandb:
+  project: dreem_challenge

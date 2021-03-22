@@ -51,9 +51,8 @@ def quantile_normalize(min_quantile, max_quantile):
         """
         max_val = np.quantile(x, max_quantile)
         min_val = np.quantile(x, min_quantile)
-        x = np.clip(x, min_val, max_val)
-        x = ((x - min_val) /
-             (max_val - min_val)) - 0.5
+        # x = np.clip(x, min_val, max_val)
+        x = (x - min_val)/(max_val - min_val) - 0.5
         return x
 
     return clipper

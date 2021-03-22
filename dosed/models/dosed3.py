@@ -6,6 +6,7 @@ import torch.nn as nn
 from ..functions import Detection
 from .base import BaseNet, get_overlerapping_default_events
 
+import wandb
 
 class DOSED3(BaseNet):
 
@@ -49,16 +50,32 @@ class DOSED3(BaseNet):
                             in_channels=4 * (2 ** (k - 1)) if k > 1 else self.number_of_channels,
                             out_channels=4 * (2 ** k),
                             kernel_size=self.kernel_size,
-                            padding=2
+                            padding=4
                         )),
                         ("batchnorm_{}".format(k - 1), nn.BatchNorm1d(4 * (2 ** k))),
-                        ("relu_{}".format(k), nn.ReLU()),
-                        ("dropput_{}".format(k), nn.Dropout(self.pdrop)),
+                        ("relu_{}".format(k), nn.LeakyReLU(1e-1)),
+                        ("dropout_{}".format(k), nn.Dropout(self.pdrop)),
                         ("max_pooling_{}".format(k), nn.MaxPool1d(kernel_size=2)),
                     ])
                 ) for k in range(1, self.k_max + 1)
             ]
         )
+            #[
+            #     nn.Sequential(
+            #         OrderedDict([
+            #             ("conv_{}".format(k - 1), nn.Conv1d(
+            #                 in_channels=8 * (2 ** ((k-1)//2)) if k > 1 else self.number_of_channels,
+            #                 out_channels=8 * (2 ** (k//2)),
+            #                 kernel_size=self.kernel_size,
+            #                 padding=4
+            #             )),
+            #             ("batchnorm_{}".format(k - 1), nn.BatchNorm1d(8 * (2 ** (k//2)))),
+            #             ("relu_{}".format(k), nn.ReLU()),
+            #             ("dropput_{}".format(k), nn.Dropout(self.pdrop)),
+            #             ("max_pooling_{}".format(k), nn.MaxPool1d(kernel_size=2)),
+            #         ])
+            #     ) for k in range(1, self.k_max + 1)
+            # ]
         self.localizations = nn.Conv1d(
             in_channels=4 * (2 ** (self.k_max)),
             out_channels=2 * len(self.localizations_default),
@@ -77,10 +94,15 @@ class DOSED3(BaseNet):
 
     def forward(self, x):
         batch = x.size(0)
-        for block in self.blocks:
+        wandb.log({"data":x.detach().cpu()[:,0,0]}, commit=False)
+        for i, block in enumerate(self.blocks):
             x = block(x)
+            wandb.log({f"layer_{i}":x.detach().cpu()[:,0,0]}, commit=False)
         localizations = self.localizations(x).squeeze().view(batch, -1, 2)
+        wandb.log({f"localizations":localizations.detach().cpu()[:,0,0]}, commit=False)
         classifications = self.classifications(x).squeeze().view(batch, -1, self.number_of_classes)
+        wandb.log({f"classifications":classifications.detach().cpu()[:,0,0]}, commit=False)
+
 
         return localizations, classifications, self.localizations_default
 

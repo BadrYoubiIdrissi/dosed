@@ -41,6 +41,6 @@ class Detection(nn.Module):
                 )
                 result.extend([(event[0].item(), event[1].item(), class_index - 1)
                                for event in events])
-            result = [event for event in result if event[0] > -10 and event[1] < 10]
+            result = [event for event in result if event[0] > -2 and event[1] < 2]
             results.append(result)
         return results
